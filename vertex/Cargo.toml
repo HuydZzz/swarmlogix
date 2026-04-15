@@ -1,6 +1,6 @@
 [package]
 name = "swarmlogix-vertex"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "SwarmLogix P2P Delivery Coordination built on Tashi Vertex Consensus"
 
@@ -18,3 +18,7 @@ path = "examples/key_generate.rs"
 [[example]]
 name = "swarm-node"
 path = "examples/swarm_node.rs"
+
+[[example]]
+name = "vertex-monitor"
+path = "examples/vertex_monitor.rs"

@@ -61,8 +61,58 @@ enum SwarmMessage {
 
 ### Prerequisites
 
-- Rust 1.75+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
-- Tashi Vertex library (auto-fetched by cargo build)
+- **Rust 1.75+** — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **CMake ≥ 4.0** — required by the `tashi-vertex` build script
+- **git** — `tashi-vertex` is fetched directly from [tashigit/tashi-vertex-rs](https://github.com/tashigit/tashi-vertex-rs) (see `vertex/Cargo.toml`)
+
+Build everything once:
+
+```bash
+cd vertex && cargo build --release --examples
+```
+
+### Warm Up · Stateful Handshake (Track 0)
+
+Two-node P2P handshake on Vertex — proves peer discovery, heartbeat, role propagation <1s, stale detection after 10s, and auto-recovery. Matches the requirements from [tashigit/warmup-vertex-rust](https://github.com/tashigit/warmup-vertex-rust).
+
+```bash
+cd vertex
+
+# 1. Generate two keypairs (run twice, keep the outputs)
+cargo run --release --example handshake -- gen-key
+cargo run --release --example handshake -- gen-key
+
+# 2. Terminal A — node "alpha" as coordinator
+cargo run --release --example handshake -- run \
+    --bind 127.0.0.1:9100 \
+    --secret <SECRET_A> \
+    --peer-addr 127.0.0.1:9101 \
+    --peer-pubkey <PUBKEY_B> \
+    --node-id alpha --role coordinator
+
+# 3. Terminal B — node "beta" as worker
+cargo run --release --example handshake -- run \
+    --bind 127.0.0.1:9101 \
+    --secret <SECRET_B> \
+    --peer-addr 127.0.0.1:9100 \
+    --peer-pubkey <PUBKEY_A> \
+    --node-id beta --role worker
+```
+
+Expected output (truncated):
+
+```
+  ✓ Vertex engine online
+  → GREETING sent as Vertex tx
+  [GREETING]  alpha (self) role=coordinator latency=1ms
+  [GREETING]  beta (peer) role=worker latency=3ms
+  ◈ SYNC POINT — 2 peer(s) in replicated state
+  [HEARTBEAT] beta seq=1 latency=4ms
+  [HEARTBEAT] beta seq=2 latency=3ms
+  [ROLE]      beta → coordinator (propagated in 6ms)   # after pressing `p` in beta
+  [STALE]     beta no heartbeat for 10.4s              # after killing beta
+  [RECOVER]   beta reconnected — state resynced        # after restarting beta
+```
 
 ### Run the 3-Node Swarm Demo
 
@@ -105,12 +155,25 @@ cargo run --example swarm-node -- \
   --agent-type ebike --vendor AeroLink --agent-id ebike-003
 ```
 
-### Run the Dashboard
+### Run the Live Dashboard (connected to real Vertex)
+
+The dashboard auto-detects the Vertex WebSocket bridge. Start the swarm and open the page — the header badge flips from `◯ SIMULATION` to `● LIVE VERTEX` as soon as the bridge is reachable.
 
 ```bash
-# Open index.html in browser for real-time visualization
-open index.html
+# Terminal 1 — start 3 delivery nodes + bridge (auto-generates 4 keypairs)
+cd vertex && ./run_swarm.sh
+
+# Terminal 2 — open the dashboard
+open ../index.html
 ```
+
+Under the hood:
+
+- `vertex/examples/vertex_bridge.rs` joins the mesh as a 4th Vertex peer (read-only observer) and runs a WebSocket server on `ws://127.0.0.1:8787`.
+- Every consensus-ordered transaction is broadcast as JSON `{ round, tx_hash, payload, latency_us }`.
+- The dashboard's **Consensus** tab renders the live tx stream; the **Mesh Event Log** interleaves simulation events with real `[VERTEX]` events prefixed with their round number.
+
+If you just want to explore the UI without running Rust, open `index.html` directly — the built-in simulation engine keeps rendering with the badge showing `SIMULATION`.
 
 ### Run Protocol Tests (Python simulation)
 
@@ -130,7 +193,9 @@ swarmlogix/
 │   │   └── main.rs              # Multi-node demo
 │   ├── examples/
 │   │   ├── key_generate.rs      # Generate Vertex keypairs
-│   │   └── swarm_node.rs        # Single agent Vertex node
+│   │   ├── handshake.rs         # Warmup Track — 2-node stateful handshake
+│   │   ├── swarm_node.rs        # Single agent Vertex node
+│   │   └── vertex_monitor.rs    # Consensus latency observer
 │   └── run_swarm.sh             # Launch 3-node swarm
 ├── src/
 │   ├── swarmlogix_engine.py     # Python simulation engine
@@ -162,10 +227,17 @@ swarmlogix/
 
 ## Tech Stack
 
-- **Coordination**: Tashi Vertex 0.12 (Rust, BFT consensus)
+- **Coordination**: Tashi Vertex (Rust, BFT consensus) — pulled from `github.com/tashigit/tashi-vertex-rs`
 - **Simulation**: Python 3.11+ (protocol validation)
 - **Dashboard**: React + Canvas API (real-time visualization)
 - **API**: WebSocket (state streaming)
+
+## Tracks Covered
+
+| Track | Status | Artifact |
+| --- | --- | --- |
+| Warm Up · Stateful Handshake | ✅ | `vertex/examples/handshake.rs` |
+| Track 3 · Agent Economy | ✅ | `vertex/examples/swarm_node.rs` + `vertex/src/main.rs` |
 
 ---
 

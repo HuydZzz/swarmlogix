@@ -143,33 +143,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  ═══ LISTENING FOR CONSENSUS EVENTS ═══");
     println!();
 
-    loop {
-        match engine.recv_message().await {
-            Ok(Message::Event(event)) => {
+    while let Some(msg) = engine.recv_message().await? {
+        match msg {
+            Message::Event(event) => {
                 // Process each transaction in the consensus-ordered event
                 let tx_count = event.transaction_count();
                 for i in 0..tx_count {
                     if let Some(tx_data) = event.transaction(i) {
-                        match SwarmMessage::from_bytes(tx_data) {
-                            Ok(msg) => {
-                                // Apply to local state — all nodes apply in same order
-                                state.apply(&msg);
-                                print_message(&msg, &state);
-                            }
-                            Err(_) => {
-                                // Non-SwarmLogix transaction, skip
-                            }
+                        if let Ok(msg) = SwarmMessage::from_bytes(tx_data) {
+                            // Apply to local state — all nodes apply in same order
+                            state.apply(&msg);
+                            print_message(&msg, &state);
                         }
                     }
                 }
             }
-            Ok(Message::SyncPoint) => {
+            Message::SyncPoint(_) => {
                 println!("  ◈ SYNC POINT — all nodes aligned");
-            }
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("  ✗ Vertex error: {e}");
-                break;
             }
         }
     }

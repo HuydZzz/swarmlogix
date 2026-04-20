@@ -59,10 +59,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total_latency_us: u64 = 0;
     let start = Instant::now();
 
-    loop {
+    while let Some(msg) = engine.recv_message().await? {
         let recv_time = Instant::now();
-        match engine.recv_message().await {
-            Ok(Message::Event(event)) => {
+        match msg {
+            Message::Event(event) => {
                 event_count += 1;
                 let latency = recv_time.elapsed();
                 let latency_us = latency.as_micros() as u64;
@@ -128,13 +128,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!();
                 }
             }
-            Ok(Message::SyncPoint) => {
+            Message::SyncPoint(_) => {
                 println!("  {:>6}  {:>10}  {:>8}  {:>12}  {}", "·", "—", "—", "SYNC", "consensus aligned");
-            }
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("  ✗ Error: {e}");
-                break;
             }
         }
     }

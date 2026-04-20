@@ -3,15 +3,39 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SwarmLogix — P2P Last-Mile Delivery Coordination</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <title>SwarmLogix — Vertex P2P Swarm</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg:        #0B0C0E;
+      --panel:     #121418;
+      --panel-2:   #171A1F;
+      --border:    rgba(255,255,255,0.06);
+      --border-hi: rgba(255,107,0,0.22);
+      --text:      #F5F6F8;
+      --text-2:    rgba(245,246,248,0.62);
+      --text-3:    rgba(245,246,248,0.32);
+      --text-4:    rgba(245,246,248,0.16);
+      --orange:    #FF6B00;
+      --orange-2:  #FF9D45;
+      --green:     #3ED598;
+      --red:       #FF4D4D;
+      --sans:      'Inter', system-ui, -apple-system, sans-serif;
+      --mono:      'JetBrains Mono', ui-monospace, monospace;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0D0D0D; overflow-x: hidden; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-    ::-webkit-scrollbar { width: 3px; }
+    html, body { background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    body { min-height: 100vh; padding: 28px 32px 40px; }
+    button { font-family: inherit; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,107,0,0.15); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,107,0,0.18); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,107,0,0.32); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+    @keyframes ring { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
   </style>
 </head>
 <body>
@@ -19,30 +43,32 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script>
-const { useState, useEffect, useRef, useCallback, createElement: h } = React;
+const { useState, useEffect, useRef, createElement: h } = React;
 
-const MAP_W = 820, MAP_H = 500;
+// ─── constants ───────────────────────────────────────────────────────────
+const MAP_W = 840, MAP_H = 520;
+const WS_URL = "ws://127.0.0.1:8787";
 const AGENT_TYPES = {
   drone: { icon: "◈", color: "#FF6B00", speed: 3.5, capacity: 2, range: 180, label: "DRONE" },
-  robot: { icon: "◉", color: "#FFFFFF", speed: 1.2, capacity: 5, range: 90, label: "ROBOT AMR" },
-  bike: { icon: "◆", color: "#FF9D45", speed: 2.5, capacity: 8, range: 250, label: "E-BIKE" },
+  robot: { icon: "◉", color: "#F5F6F8", speed: 1.2, capacity: 5, range: 90,  label: "ROBOT" },
+  bike:  { icon: "◆", color: "#FF9D45", speed: 2.5, capacity: 8, range: 250, label: "E-BIKE" },
 };
 const VENDORS = ["RoyalFleet", "SwiftBot", "AeroLink", "UrbanFleet", "NexDrone"];
 const ZONES = [
-  { name: "CAMDEN", x: 100, y: 80, w: 200, h: 150 },
-  { name: "CANARY WHARF", x: 380, y: 60, w: 220, h: 160 },
-  { name: "GREENWICH", x: 500, y: 280, w: 200, h: 180 },
-  { name: "SHOREDITCH", x: 80, y: 300, w: 220, h: 170 },
+  { name: "CAMDEN",       x: 100, y: 80,  w: 200, h: 150 },
+  { name: "CANARY WHARF", x: 390, y: 60,  w: 220, h: 170 },
+  { name: "GREENWICH",    x: 520, y: 290, w: 210, h: 180 },
+  { name: "SHOREDITCH",   x: 80,  y: 310, w: 220, h: 170 },
 ];
-const uid = () => Math.random().toString(36).slice(2, 8);
-const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-const lerp = (a, b, t) => a + (b - a) * t;
+const uid   = () => Math.random().toString(36).slice(2, 8);
+const dist  = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const lerp  = (a, b, t) => a + (b - a) * t;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const rand = (lo, hi) => lo + Math.random() * (hi - lo);
-const O = "#FF6B00";
-const MONO = "'Space Mono', 'Courier New', monospace";
+const pick  = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const rand  = (lo, hi) => lo + Math.random() * (hi - lo);
+const fmtUs = (us) => us == null ? "—" : us < 1000 ? `${us}μs` : `${(us/1000).toFixed(1)}ms`;
 
+// ─── sim engine ──────────────────────────────────────────────────────────
 class SwarmEngine {
   constructor() {
     this.agents = []; this.orders = []; this.auctions = []; this.handoffs = [];
@@ -55,289 +81,722 @@ class SwarmEngine {
     for (let i = 0; i < count; i++) {
       const typeKey = pick(Object.keys(AGENT_TYPES));
       const t = AGENT_TYPES[typeKey];
-      this.agents.push({ id: uid(), type: typeKey, vendor: pick(VENDORS), x: rand(40, MAP_W - 40), y: rand(40, MAP_H - 40), targetX: null, targetY: null, battery: rand(60, 100), capacity: t.capacity, load: 0, speed: t.speed * rand(0.85, 1.15), range: t.range, status: "idle", orderId: null, discoveredPeers: [], safetyMode: false });
+      this.agents.push({
+        id: uid(), type: typeKey, vendor: pick(VENDORS),
+        x: rand(40, MAP_W - 40), y: rand(40, MAP_H - 40),
+        targetX: null, targetY: null,
+        battery: rand(60, 100), capacity: t.capacity, load: 0,
+        speed: t.speed * rand(0.85, 1.15), range: t.range,
+        status: "idle", orderId: null, discoveredPeers: [], safetyMode: false,
+      });
     }
-    this.log("SYSTEM", "Swarm initialized: " + count + " agents across " + VENDORS.length + " vendors");
+    this.log("SYSTEM", `Swarm initialized · ${count} agents · ${VENDORS.length} vendors`);
     return this;
   }
-  log(source, message, type) { type = type || "info"; this.eventLog.unshift({ tick: this.tick, source: source, message: message, type: type, ts: Date.now() }); if (this.eventLog.length > 120) this.eventLog.length = 120; }
+  log(src, msg, type = "info") {
+    this.eventLog.unshift({ tick: this.tick, src, msg, type, ts: Date.now() });
+    if (this.eventLog.length > 160) this.eventLog.length = 160;
+  }
   runDiscovery() {
     this.connections = [];
-    for (const a of this.agents) { if (a.status === "offline") continue; a.discoveredPeers = [];
-      for (const b of this.agents) { if (a.id === b.id || b.status === "offline") continue;
-        if (dist(a, b) < a.range) { a.discoveredPeers.push(b.id); this.connections.push({ from: a.id, to: b.id, strength: 1 - dist(a, b) / a.range }); }
+    for (const a of this.agents) {
+      if (a.status === "offline") continue;
+      a.discoveredPeers = [];
+      for (const b of this.agents) {
+        if (a.id === b.id || b.status === "offline") continue;
+        if (dist(a, b) < a.range) {
+          a.discoveredPeers.push(b.id);
+          this.connections.push({ from: a.id, to: b.id, strength: 1 - dist(a, b) / a.range });
+        }
       }
     }
   }
   maybeSpawnOrder() {
-    if (this.orders.filter(function(o){return o.status==="pending"}).length >= 5) return;
-    if (Math.random() > 0.025) return;
-    var order = { id: uid(), pickupX: rand(60, MAP_W - 60), pickupY: rand(60, MAP_H - 60), deliverX: rand(60, MAP_W - 60), deliverY: rand(60, MAP_H - 60), weight: rand(0.5, 6), status: "pending", assignedAgent: null, handoffAgent: null, createdAt: this.tick };
+    if (this.orders.filter(o => o.status === "pending").length >= 5) return;
+    if (Math.random() > 0.028) return;
+    const order = {
+      id: uid(),
+      pickupX: rand(60, MAP_W - 60), pickupY: rand(60, MAP_H - 60),
+      deliverX: rand(60, MAP_W - 60), deliverY: rand(60, MAP_H - 60),
+      weight: rand(0.5, 6), status: "pending", assignedAgent: null, handoffAgent: null,
+      createdAt: this.tick,
+    };
     this.orders.push(order);
-    this.log("ORDER", "New order " + order.id.slice(0, 4) + " — " + order.weight.toFixed(1) + "kg", "order");
+    this.log("ORDER", `New order ${order.id.slice(0, 4)} · ${order.weight.toFixed(1)}kg`, "order");
   }
   runAuctions() {
-    var pending = this.orders.filter(function(o){return o.status==="pending"});
-    for (var oi = 0; oi < pending.length; oi++) {
-      var order = pending[oi];
-      var candidates = this.agents.filter(function(a){ return a.status === "idle" && !a.safetyMode && a.capacity >= order.weight && a.battery > 20 && dist(a, { x: order.pickupX, y: order.pickupY }) < a.range * 1.5; });
+    const pending = this.orders.filter(o => o.status === "pending");
+    for (const order of pending) {
+      const candidates = this.agents.filter(a =>
+        a.status === "idle" && !a.safetyMode &&
+        a.capacity >= order.weight && a.battery > 20 &&
+        dist(a, { x: order.pickupX, y: order.pickupY }) < a.range * 1.5);
       if (candidates.length < 1) continue;
       order.status = "auctioning";
-      var bids = candidates.map(function(a){ var d = dist(a, { x: order.pickupX, y: order.pickupY }); var score = (1 - d / (a.range * 1.5)) * 0.4 + (a.battery / 100) * 0.3 + (1 - a.load / a.capacity) * 0.3; return { agent: a, score: score, dist: d }; });
-      bids.sort(function(a, b){ return b.score - a.score; });
-      var winner = bids[0];
-      this.auctions.unshift({ id: uid(), orderId: order.id, tick: this.tick, winnerId: winner.agent.id, bids: bids.map(function(b){ return { agentId: b.agent.id, score: b.score.toFixed(3), vendor: b.agent.vendor }; }) });
-      if (this.auctions.length > 30) this.auctions.length = 30;
-      winner.agent.status = "delivering"; winner.agent.orderId = order.id; winner.agent.targetX = order.pickupX; winner.agent.targetY = order.pickupY; winner.agent.load = order.weight;
-      order.status = "assigned"; order.assignedAgent = winner.agent.id; this.stats.auctionsRun++;
-      this.log("AUCTION", "Order " + order.id.slice(0, 4) + ": " + bids.length + " bids → " + winner.agent.vendor + "/" + winner.agent.type + " wins (" + winner.score.toFixed(2) + ")", "auction");
+      const bids = candidates.map(a => {
+        const d = dist(a, { x: order.pickupX, y: order.pickupY });
+        const score = (1 - d / (a.range * 1.5)) * 0.4 + (a.battery / 100) * 0.3 + (1 - a.load / a.capacity) * 0.3;
+        return { agent: a, score, dist: d };
+      }).sort((a, b) => b.score - a.score);
+      const winner = bids[0];
+      this.auctions.unshift({
+        id: uid(), orderId: order.id, tick: this.tick, winnerId: winner.agent.id,
+        bids: bids.map(b => ({ agentId: b.agent.id, score: b.score.toFixed(3), vendor: b.agent.vendor })),
+      });
+      if (this.auctions.length > 40) this.auctions.length = 40;
+      winner.agent.status = "delivering";
+      winner.agent.orderId = order.id;
+      winner.agent.targetX = order.pickupX; winner.agent.targetY = order.pickupY;
+      winner.agent.load = order.weight;
+      order.status = "assigned"; order.assignedAgent = winner.agent.id;
+      this.stats.auctionsRun++;
+      this.log("AUCTION", `Order ${order.id.slice(0, 4)} · ${bids.length} bids · ${winner.agent.vendor}/${winner.agent.type} won (${winner.score.toFixed(2)})`, "auction");
     }
   }
   moveAgents() {
-    for (var i = 0; i < this.agents.length; i++) {
-      var a = this.agents[i];
+    for (const a of this.agents) {
       if (a.status === "offline" || a.safetyMode) continue;
       a.battery = Math.max(0, a.battery - 0.008);
       if (a.battery <= 0) { this.triggerAgentFailure(a, "battery_dead"); continue; }
       if (a.targetX != null && a.targetY != null) {
-        var d = dist(a, { x: a.targetX, y: a.targetY });
+        const d = dist(a, { x: a.targetX, y: a.targetY });
         if (d < a.speed * 1.5) { a.x = a.targetX; a.y = a.targetY; this.onArrival(a); }
-        else { var angle = Math.atan2(a.targetY - a.y, a.targetX - a.x); a.x = clamp(a.x + Math.cos(angle) * a.speed, 10, MAP_W - 10); a.y = clamp(a.y + Math.sin(angle) * a.speed, 10, MAP_H - 10); }
-      } else if (a.status === "idle" && Math.random() < 0.01) { a.targetX = clamp(a.x + rand(-100, 100), 20, MAP_W - 20); a.targetY = clamp(a.y + rand(-100, 100), 20, MAP_H - 20); }
+        else {
+          const angle = Math.atan2(a.targetY - a.y, a.targetX - a.x);
+          a.x = clamp(a.x + Math.cos(angle) * a.speed, 10, MAP_W - 10);
+          a.y = clamp(a.y + Math.sin(angle) * a.speed, 10, MAP_H - 10);
+        }
+      } else if (a.status === "idle" && Math.random() < 0.01) {
+        a.targetX = clamp(a.x + rand(-100, 100), 20, MAP_W - 20);
+        a.targetY = clamp(a.y + rand(-100, 100), 20, MAP_H - 20);
+      }
     }
   }
   onArrival(a) {
-    var order = this.orders.find(function(o){return o.id===a.orderId});
+    const order = this.orders.find(o => o.id === a.orderId);
     if (!order) { a.targetX = null; a.targetY = null; a.status = "idle"; return; }
     if (order.status === "assigned") {
       order.status = "in_transit"; a.targetX = order.deliverX; a.targetY = order.deliverY;
-      this.log("DELIVER", a.vendor + "/" + a.type + " picked up order " + order.id.slice(0, 4), "deliver");
-      var totalDist = dist({ x: order.pickupX, y: order.pickupY }, { x: order.deliverX, y: order.deliverY });
+      this.log("DELIVER", `${a.vendor}/${a.type} picked up ${order.id.slice(0,4)}`, "deliver");
+      const totalDist = dist({ x: order.pickupX, y: order.pickupY }, { x: order.deliverX, y: order.deliverY });
       if (totalDist > a.range * 0.8 || (a.type === "drone" && Math.random() < 0.3)) this.initiateHandoff(a, order);
     } else if (order.status === "in_transit" || order.status === "handoff") {
-      order.status = "delivered"; a.status = "idle"; a.orderId = null; a.load = 0; a.targetX = null; a.targetY = null; this.stats.delivered++;
-      this.log("DELIVER", "✓ Order " + order.id.slice(0, 4) + " delivered by " + a.vendor + "/" + a.type, "success");
+      order.status = "delivered"; a.status = "idle";
+      a.orderId = null; a.load = 0; a.targetX = null; a.targetY = null;
+      this.stats.delivered++;
+      this.log("DELIVER", `✓ ${order.id.slice(0,4)} delivered by ${a.vendor}/${a.type}`, "success");
     }
   }
   initiateHandoff(fromAgent, order) {
-    var midX = (fromAgent.x + order.deliverX) / 2, midY = (fromAgent.y + order.deliverY) / 2;
-    var self = this;
-    var candidates = this.agents.filter(function(a){ return a.id !== fromAgent.id && a.status === "idle" && !a.safetyMode && a.capacity >= order.weight && dist(a, { x: midX, y: midY }) < 200; });
+    const midX = (fromAgent.x + order.deliverX) / 2, midY = (fromAgent.y + order.deliverY) / 2;
+    const candidates = this.agents.filter(a =>
+      a.id !== fromAgent.id && a.status === "idle" && !a.safetyMode &&
+      a.capacity >= order.weight && dist(a, { x: midX, y: midY }) < 200);
     if (!candidates.length) return;
-    var relay = candidates.sort(function(a, b){ return dist(a, { x: order.deliverX, y: order.deliverY }) - dist(b, { x: order.deliverX, y: order.deliverY }); })[0];
-    var t = 0.4 + Math.random() * 0.2;
-    var hx = lerp(fromAgent.x, order.deliverX, t), hy = lerp(fromAgent.y, order.deliverY, t);
+    const relay = candidates.sort((a, b) =>
+      dist(a, { x: order.deliverX, y: order.deliverY }) - dist(b, { x: order.deliverX, y: order.deliverY }))[0];
+    const t = 0.4 + Math.random() * 0.2;
+    const hx = lerp(fromAgent.x, order.deliverX, t), hy = lerp(fromAgent.y, order.deliverY, t);
     fromAgent.targetX = hx; fromAgent.targetY = hy;
     order.status = "handoff"; order.handoffAgent = relay.id;
     this.handoffs.push({ id: uid(), orderId: order.id, from: fromAgent.id, to: relay.id, x: hx, y: hy, tick: this.tick, status: "pending" });
-    setTimeout(function(){
+    setTimeout(() => {
       if (order.status !== "handoff") return;
-      relay.status = "delivering"; relay.orderId = order.id; relay.targetX = hx; relay.targetY = hy; relay.load = order.weight; order.status = "in_transit"; order.assignedAgent = relay.id;
-      var hf = self.handoffs.find(function(h){ return h.orderId === order.id && h.status === "pending"; });
-      if (hf) hf.status = "completed"; self.stats.handoffsCompleted++;
-      fromAgent.status = "idle"; fromAgent.orderId = null; fromAgent.load = 0; fromAgent.targetX = null; fromAgent.targetY = null;
-      self.log("HANDOFF", fromAgent.vendor + "/" + fromAgent.type + " → " + relay.vendor + "/" + relay.type + " for " + order.id.slice(0, 4), "handoff");
+      relay.status = "delivering"; relay.orderId = order.id;
+      relay.targetX = hx; relay.targetY = hy; relay.load = order.weight;
+      order.status = "in_transit"; order.assignedAgent = relay.id;
+      const hf = this.handoffs.find(hh => hh.orderId === order.id && hh.status === "pending");
+      if (hf) hf.status = "completed";
+      this.stats.handoffsCompleted++;
+      fromAgent.status = "idle"; fromAgent.orderId = null; fromAgent.load = 0;
+      fromAgent.targetX = null; fromAgent.targetY = null;
+      this.log("HANDOFF", `${fromAgent.vendor}/${fromAgent.type} → ${relay.vendor}/${relay.type} · ${order.id.slice(0,4)}`, "handoff");
     }, 800);
   }
-  triggerAgentFailure(agent, reason) {
-    reason = reason || "random";
+  triggerAgentFailure(agent, reason = "random") {
     if (agent.status === "offline") return;
-    var hadOrder = agent.orderId; agent.status = "offline";
-    var order = this.orders.find(function(o){return o.id===hadOrder});
-    this.log("FAULT", "⚠ " + agent.vendor + "/" + agent.type + " offline (" + reason + ")", "error");
-    if (order && order.status !== "delivered") { order.status = "pending"; order.assignedAgent = null; this.stats.heals++; this.log("HEAL", "Re-auctioning order " + order.id.slice(0, 4), "heal"); }
+    const hadOrder = agent.orderId;
+    agent.status = "offline";
+    const order = this.orders.find(o => o.id === hadOrder);
+    this.log("FAULT", `${agent.vendor}/${agent.type} offline · ${reason}`, "error");
+    if (order && order.status !== "delivered") {
+      order.status = "pending"; order.assignedAgent = null;
+      this.stats.heals++;
+      this.log("HEAL", `Re-auctioning ${order.id.slice(0,4)}`, "heal");
+    }
     agent.orderId = null; agent.load = 0; agent.targetX = null; agent.targetY = null;
-    var self = this;
-    setTimeout(function(){ agent.status = "idle"; agent.battery = rand(40, 70); self.log("HEAL", agent.vendor + "/" + agent.type + " recovered (" + agent.battery.toFixed(0) + "%)", "heal"); }, rand(3000, 6000));
+    setTimeout(() => {
+      agent.status = "idle"; agent.battery = rand(40, 70);
+      this.log("HEAL", `${agent.vendor}/${agent.type} recovered (${agent.battery.toFixed(0)}%)`, "heal");
+    }, rand(3000, 6000));
   }
   maybeFailAgent() {
     if (Math.random() > 0.004) return;
-    var alive = this.agents.filter(function(a){return a.status!=="offline"});
+    const alive = this.agents.filter(a => a.status !== "offline");
     if (alive.length < 5) return;
     this.triggerAgentFailure(pick(alive), pick(["network_loss", "hardware_fault", "battery_critical"]));
   }
-  triggerSafetyAlert(x, y, radius) {
-    radius = radius || 120; this.safetyZone = { x: x, y: y, radius: radius, startTick: this.tick }; this.stats.alerts++;
-    var frozen = 0; var self = this;
-    for (var i = 0; i < this.agents.length; i++) { var a = this.agents[i]; if (a.status === "offline") continue; if (dist(a, { x: x, y: y }) < radius) { a.safetyMode = true; a.targetX = null; a.targetY = null; frozen++; } }
-    this.log("SAFETY", "Safety mesh propagated — " + frozen + " agents frozen", "safety");
-    setTimeout(function(){ for (var i = 0; i < self.agents.length; i++) self.agents[i].safetyMode = false; self.safetyZone = null; self.log("SAFETY", "Alert cleared — swarm resuming", "safety"); }, 4000);
-  }
-  maybeSafetyEvent() { if (Math.random() > 0.001 || this.safetyZone) return; this.triggerSafetyAlert(rand(100, MAP_W - 100), rand(100, MAP_H - 100), rand(80, 150)); }
-  update() {
-    if (this.paused) return; this.tick++;
-    this.runDiscovery(); this.maybeSpawnOrder(); this.runAuctions(); this.moveAgents(); this.maybeFailAgent(); this.maybeSafetyEvent();
-    this.orders = this.orders.filter(function(o){ return o.status !== "delivered" || this.tick - o.createdAt < 600; }.bind(this));
-  }
-}
-
-function SwarmMap(props) {
-  var engine = props.engine;
-  var canvasRef = useRef(null);
-  useEffect(function() {
-    var canvas = canvasRef.current; if (!canvas) return;
-    var ctx = canvas.getContext("2d"); var dpr = window.devicePixelRatio || 1;
-    canvas.width = MAP_W * dpr; canvas.height = MAP_H * dpr; ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#0A0A0A"; ctx.fillRect(0, 0, MAP_W, MAP_H);
-    for (var x = 20; x < MAP_W; x += 28) for (var y = 20; y < MAP_H; y += 28) { ctx.beginPath(); ctx.arc(x, y, 0.6, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,107,0,0.07)"; ctx.fill(); }
-    for (var zi = 0; zi < ZONES.length; zi++) { var z = ZONES[zi]; ctx.fillStyle = "rgba(255,107,0,0.015)"; ctx.strokeStyle = "rgba(255,107,0,0.1)"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.rect(z.x, z.y, z.w, z.h); ctx.fill(); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = "rgba(255,107,0,0.25)"; ctx.font = "bold 8px " + MONO; ctx.fillText(z.name, z.x + 8, z.y + 15); }
-    if (engine.safetyZone) { var sz = engine.safetyZone; var pulse = 0.3 + 0.2 * Math.sin(engine.tick * 0.15); ctx.beginPath(); ctx.arc(sz.x, sz.y, sz.radius, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,107,0," + (pulse * 0.1) + ")"; ctx.fill(); ctx.strokeStyle = "rgba(255,107,0," + (pulse * 0.8) + ")"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = O; ctx.font = "bold 10px " + MONO; ctx.textAlign = "center"; ctx.fillText("SAFETY ZONE", sz.x, sz.y - sz.radius - 6); ctx.textAlign = "start"; }
-    for (var ci = 0; ci < engine.connections.length; ci++) { var conn = engine.connections[ci]; var from = engine.agents.find(function(a){return a.id===conn.from}); var to = engine.agents.find(function(a){return a.id===conn.to}); if (!from || !to) continue; ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.strokeStyle = "rgba(255,107,0," + (conn.strength * 0.055) + ")"; ctx.lineWidth = 0.5; ctx.stroke(); }
-    for (var oi = 0; oi < engine.orders.length; oi++) { var o = engine.orders[oi]; if (o.status === "delivered") continue; ctx.beginPath(); ctx.arc(o.pickupX, o.pickupY, 4, 0, Math.PI * 2); ctx.fillStyle = o.status === "pending" ? O : "rgba(255,107,0,0.25)"; ctx.fill(); ctx.beginPath(); ctx.arc(o.deliverX, o.deliverY, 3, 0, Math.PI * 2); ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke(); ctx.beginPath(); ctx.moveTo(o.pickupX, o.pickupY); ctx.lineTo(o.deliverX, o.deliverY); ctx.strokeStyle = "rgba(255,107,0,0.07)"; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]); }
-    for (var hi = 0; hi < engine.handoffs.length; hi++) { var hh = engine.handoffs[hi]; if (hh.status !== "pending") continue; ctx.beginPath(); ctx.arc(hh.x, hh.y, 7, 0, Math.PI * 2); ctx.strokeStyle = O; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = O; ctx.font = "bold 7px " + MONO; ctx.textAlign = "center"; ctx.fillText("HANDOFF", hh.x, hh.y - 10); ctx.textAlign = "start"; }
-    for (var ai = 0; ai < engine.agents.length; ai++) {
-      var a = engine.agents[ai]; var t = AGENT_TYPES[a.type]; var off = a.status === "offline"; var safe = a.safetyMode;
-      if (!off && a.status === "delivering") { ctx.beginPath(); ctx.arc(a.x, a.y, 12, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,107,0,0.05)"; ctx.fill(); }
-      ctx.beginPath(); ctx.arc(a.x, a.y, off ? 3 : 5, 0, Math.PI * 2); ctx.fillStyle = off ? "#333" : safe ? O : t.color; ctx.globalAlpha = off ? 0.35 : 1; ctx.fill(); ctx.globalAlpha = 1;
-      if (a.status === "delivering") { ctx.beginPath(); ctx.arc(a.x, a.y, 8, 0, Math.PI * 2); ctx.strokeStyle = O; ctx.lineWidth = 1; ctx.stroke(); }
-      if (!off) { var bw = 12, bh = 1.5, bx = a.x - bw / 2, by = a.y + 8; ctx.fillStyle = "rgba(255,255,255,0.04)"; ctx.fillRect(bx, by, bw, bh); ctx.fillStyle = a.battery > 30 ? O : "#ff3333"; ctx.fillRect(bx, by, bw * (a.battery / 100), bh); }
-      if (off) { ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(a.x-3,a.y-3); ctx.lineTo(a.x+3,a.y+3); ctx.moveTo(a.x+3,a.y-3); ctx.lineTo(a.x-3,a.y+3); ctx.stroke(); }
-      if (safe) { var p2 = 0.5 + 0.5 * Math.sin(engine.tick * 0.2); ctx.beginPath(); ctx.arc(a.x, a.y, 10, 0, Math.PI * 2); ctx.strokeStyle = "rgba(255,107,0," + (p2*0.6) + ")"; ctx.lineWidth = 1; ctx.setLineDash([2,2]); ctx.stroke(); ctx.setLineDash([]); }
+  triggerSafetyAlert(x, y, radius = 120) {
+    this.safetyZone = { x, y, radius, startTick: this.tick };
+    this.stats.alerts++;
+    let frozen = 0;
+    for (const a of this.agents) {
+      if (a.status === "offline") continue;
+      if (dist(a, { x, y }) < radius) { a.safetyMode = true; a.targetX = null; a.targetY = null; frozen++; }
     }
-    ctx.fillStyle = "rgba(10,10,10,0.92)"; ctx.strokeStyle = "rgba(255,107,0,0.12)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.rect(MAP_W-125, MAP_H-82, 118, 75); ctx.fill(); ctx.stroke();
-    ctx.font = "bold 7px " + MONO; ctx.fillStyle = O; ctx.fillText("LEGEND", MAP_W-117, MAP_H-67);
-    var ly = MAP_H - 52; var entries = Object.entries(AGENT_TYPES);
-    for (var ei = 0; ei < entries.length; ei++) { var tt = entries[ei][1]; ctx.fillStyle = tt.color; ctx.beginPath(); ctx.arc(MAP_W-113, ly-2, 2.5, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "7px " + MONO; ctx.fillText(tt.label, MAP_W-104, ly); ly += 13; }
-    ctx.fillStyle = O; ctx.beginPath(); ctx.arc(MAP_W-113, ly-2, 2, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.fillText("ORDER", MAP_W-104, ly);
-  });
-  return h("canvas", { ref: canvasRef, style: { width: MAP_W, height: MAP_H, border: "1px solid rgba(255,107,0,0.12)" } });
+    this.log("SAFETY", `Safety mesh propagated · ${frozen} agents frozen`, "safety");
+    setTimeout(() => {
+      for (const a of this.agents) a.safetyMode = false;
+      this.safetyZone = null;
+      this.log("SAFETY", "Alert cleared · swarm resuming", "safety");
+    }, 4000);
+  }
+  maybeSafetyEvent() {
+    if (Math.random() > 0.001 || this.safetyZone) return;
+    this.triggerSafetyAlert(rand(100, MAP_W - 100), rand(100, MAP_H - 100), rand(80, 150));
+  }
+  update() {
+    if (this.paused) return;
+    this.tick++;
+    this.runDiscovery(); this.maybeSpawnOrder(); this.runAuctions();
+    this.moveAgents(); this.maybeFailAgent(); this.maybeSafetyEvent();
+    this.orders = this.orders.filter(o => o.status !== "delivered" || this.tick - o.createdAt < 600);
+  }
 }
 
+// ─── vertex bridge client ────────────────────────────────────────────────
+function useVertexBridge(onFrame) {
+  const [status, setStatus] = useState("connecting"); // connecting | live | offline
+  const [info, setInfo] = useState(null);
+  const ref = useRef({ ws: null, timer: null, onFrame });
+  ref.current.onFrame = onFrame;
+
+  useEffect(() => {
+    let cancelled = false;
+    function connect() {
+      if (cancelled) return;
+      setStatus("connecting");
+      let ws;
+      try { ws = new WebSocket(WS_URL); } catch { setStatus("offline"); schedule(); return; }
+      ref.current.ws = ws;
+      ws.onopen = () => { if (!cancelled) setStatus("live"); };
+      ws.onclose = () => { if (!cancelled) { setStatus("offline"); schedule(); } };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+      ws.onmessage = (e) => {
+        try {
+          const frame = JSON.parse(e.data);
+          if (frame.type === "Hello") setInfo(frame);
+          ref.current.onFrame && ref.current.onFrame(frame);
+        } catch {}
+      };
+    }
+    function schedule() {
+      clearTimeout(ref.current.timer);
+      ref.current.timer = setTimeout(connect, 2500);
+    }
+    connect();
+    return () => { cancelled = true; clearTimeout(ref.current.timer); if (ref.current.ws) try { ref.current.ws.close(); } catch {} };
+  }, []);
+
+  return { status, info };
+}
+
+// ─── map canvas ──────────────────────────────────────────────────────────
+function SwarmMap({ engine }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = MAP_W * dpr; canvas.height = MAP_H * dpr; ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#0B0C0E"; ctx.fillRect(0, 0, MAP_W, MAP_H);
+    // dot grid
+    for (let x = 20; x < MAP_W; x += 28)
+      for (let y = 20; y < MAP_H; y += 28) {
+        ctx.beginPath(); ctx.arc(x, y, 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,107,0,0.06)"; ctx.fill();
+      }
+    // zones
+    for (const z of ZONES) {
+      ctx.fillStyle = "rgba(255,107,0,0.018)";
+      ctx.strokeStyle = "rgba(255,107,0,0.09)";
+      ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.rect(z.x, z.y, z.w, z.h); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,107,0,0.28)";
+      ctx.font = "600 9px 'JetBrains Mono'";
+      ctx.fillText(z.name, z.x + 10, z.y + 17);
+    }
+    if (engine.safetyZone) {
+      const sz = engine.safetyZone;
+      const pulse = 0.3 + 0.2 * Math.sin(engine.tick * 0.15);
+      ctx.beginPath(); ctx.arc(sz.x, sz.y, sz.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,107,0,${pulse * 0.1})`; ctx.fill();
+      ctx.strokeStyle = `rgba(255,107,0,${pulse * 0.8})`;
+      ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#FF6B00"; ctx.font = "700 10px 'JetBrains Mono'"; ctx.textAlign = "center";
+      ctx.fillText("SAFETY ZONE", sz.x, sz.y - sz.radius - 8); ctx.textAlign = "start";
+    }
+    // peer links
+    for (const c of engine.connections) {
+      const from = engine.agents.find(a => a.id === c.from);
+      const to = engine.agents.find(a => a.id === c.to);
+      if (!from || !to) continue;
+      ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y);
+      ctx.strokeStyle = `rgba(255,107,0,${c.strength * 0.055})`; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+    // orders
+    for (const o of engine.orders) {
+      if (o.status === "delivered") continue;
+      ctx.beginPath(); ctx.arc(o.pickupX, o.pickupY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = o.status === "pending" ? "#FF6B00" : "rgba(255,107,0,0.25)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(o.deliverX, o.deliverY, 3, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(o.pickupX, o.pickupY); ctx.lineTo(o.deliverX, o.deliverY);
+      ctx.strokeStyle = "rgba(255,107,0,0.07)"; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // handoff markers
+    for (const hh of engine.handoffs) {
+      if (hh.status !== "pending") continue;
+      ctx.beginPath(); ctx.arc(hh.x, hh.y, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = "#FF6B00"; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#FF6B00"; ctx.font = "700 8px 'JetBrains Mono'"; ctx.textAlign = "center";
+      ctx.fillText("HANDOFF", hh.x, hh.y - 12); ctx.textAlign = "start";
+    }
+    // agents
+    for (const a of engine.agents) {
+      const t = AGENT_TYPES[a.type]; const off = a.status === "offline"; const safe = a.safetyMode;
+      if (!off && a.status === "delivering") {
+        ctx.beginPath(); ctx.arc(a.x, a.y, 14, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,107,0,0.05)"; ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(a.x, a.y, off ? 3 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = off ? "#333" : safe ? "#FF6B00" : t.color;
+      ctx.globalAlpha = off ? 0.35 : 1; ctx.fill(); ctx.globalAlpha = 1;
+      if (a.status === "delivering") {
+        ctx.beginPath(); ctx.arc(a.x, a.y, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = "#FF6B00"; ctx.lineWidth = 1; ctx.stroke();
+      }
+      if (!off) {
+        const bw = 14, bh = 2, bx = a.x - bw / 2, by = a.y + 9;
+        ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = a.battery > 30 ? "#FF6B00" : "#FF4D4D";
+        ctx.fillRect(bx, by, bw * (a.battery / 100), bh);
+      }
+      if (off) {
+        ctx.strokeStyle = "#FF4D4D"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(a.x-3,a.y-3); ctx.lineTo(a.x+3,a.y+3);
+        ctx.moveTo(a.x+3,a.y-3); ctx.lineTo(a.x-3,a.y+3); ctx.stroke();
+      }
+      if (safe) {
+        const p2 = 0.5 + 0.5 * Math.sin(engine.tick * 0.2);
+        ctx.beginPath(); ctx.arc(a.x, a.y, 11, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,107,0,${p2*0.6})`;
+        ctx.lineWidth = 1; ctx.setLineDash([2,2]); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+    // legend
+    ctx.fillStyle = "rgba(11,12,14,0.94)";
+    ctx.strokeStyle = "rgba(255,107,0,0.14)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(MAP_W - 138, MAP_H - 92, 126, 80); ctx.fill(); ctx.stroke();
+    ctx.font = "700 8px 'JetBrains Mono'"; ctx.fillStyle = "#FF6B00";
+    ctx.fillText("LEGEND", MAP_W - 128, MAP_H - 75);
+    let ly = MAP_H - 60;
+    for (const [, tt] of Object.entries(AGENT_TYPES)) {
+      ctx.fillStyle = tt.color; ctx.beginPath(); ctx.arc(MAP_W - 122, ly - 2, 3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(245,246,248,0.48)"; ctx.font = "500 8px 'JetBrains Mono'";
+      ctx.fillText(tt.label, MAP_W - 112, ly);
+      ly += 14;
+    }
+    ctx.fillStyle = "#FF6B00";
+    ctx.beginPath(); ctx.arc(MAP_W - 122, ly - 2, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(245,246,248,0.48)"; ctx.fillText("ORDER", MAP_W - 112, ly);
+  });
+  return h("canvas", {
+    ref: canvasRef,
+    style: { width: MAP_W, height: MAP_H, display: "block", borderRadius: 8 },
+  });
+}
+
+// ─── UI atoms ────────────────────────────────────────────────────────────
+function StatCard({ label, value, hl, accent }) {
+  return h("div", {
+    style: {
+      flex: 1, minWidth: 0, padding: "18px 20px",
+      background: hl ? "rgba(255,107,0,0.07)" : "var(--panel)",
+      border: `1px solid ${hl ? "var(--border-hi)" : "var(--border)"}`,
+      borderRadius: 8,
+    },
+  },
+    h("div", { style: { fontSize: 10, fontFamily: "var(--mono)", color: hl ? "var(--orange)" : "var(--text-3)", letterSpacing: "0.18em", marginBottom: 10, fontWeight: 500 } }, label),
+    h("div", { style: { fontSize: 28, fontWeight: 700, color: hl ? "var(--orange)" : accent || "var(--text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 } }, value)
+  );
+}
+
+function Pill({ children, color }) {
+  return h("span", {
+    style: {
+      padding: "3px 10px", fontSize: 10, fontFamily: "var(--mono)",
+      fontWeight: 600, letterSpacing: "0.08em",
+      border: `1px solid ${color}55`, color, borderRadius: 4,
+    },
+  }, children);
+}
+
+function SectionTitle({ children, right }) {
+  return h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 } },
+    h("div", { style: { fontSize: 11, fontFamily: "var(--mono)", fontWeight: 700, letterSpacing: "0.18em", color: "var(--orange)" } }, children),
+    right || null
+  );
+}
+
+// ─── live badge ──────────────────────────────────────────────────────────
+function LiveBadge({ status, info, round }) {
+  const live = status === "live";
+  const color = live ? "#3ED598" : status === "connecting" ? "#FF9D45" : "var(--text-3)";
+  const dot = h("span", { style: {
+    position: "relative",
+    width: 8, height: 8, borderRadius: "50%", background: color,
+    animation: live ? "pulse 1.8s ease-in-out infinite" : undefined,
+  } },
+    live && h("span", { style: {
+      position: "absolute", inset: -2,
+      borderRadius: "50%", border: `2px solid ${color}`,
+      animation: "ring 1.8s ease-out infinite",
+    } })
+  );
+  const label = live ? "LIVE VERTEX" : status === "connecting" ? "CONNECTING…" : "SIMULATION";
+  const sub = live
+    ? (info ? `mesh · ${info.vertex_peers + 1} peers · round ${round}` : "connected")
+    : "real Vertex node offline — showing sim data";
+  return h("div", { style: {
+    display: "flex", alignItems: "center", gap: 10,
+    padding: "8px 14px 8px 12px",
+    background: live ? "rgba(62,213,152,0.08)" : "var(--panel)",
+    border: `1px solid ${live ? "rgba(62,213,152,0.28)" : "var(--border)"}`,
+    borderRadius: 6,
+  } },
+    dot,
+    h("div", null,
+      h("div", { style: { fontSize: 10, fontFamily: "var(--mono)", letterSpacing: "0.14em", fontWeight: 700, color } }, label),
+      h("div", { style: { fontSize: 9, color: "var(--text-3)", marginTop: 2, fontFamily: "var(--mono)" } }, sub)
+    )
+  );
+}
+
+// ─── main app ────────────────────────────────────────────────────────────
 function App() {
-  var engineRef = useRef(null);
-  var _u = useState(0), forceUpdate = function(){ _u[1](function(n){return n+1}); };
-  var _r = useState(false), isRunning = _r[0], setIsRunning = _r[1];
-  var _t = useState("map"), tab = _t[0], setTab = _t[1];
-  var intervalRef = useRef(null);
+  const engineRef = useRef(null);
+  const [, force] = useState(0);
+  const forceUpdate = () => force(n => n + 1);
+  const [isRunning, setIsRunning] = useState(false);
+  const [tab, setTab] = useState("map");
+  const intervalRef = useRef(null);
+
+  // Live consensus feed from the bridge.
+  const [txStream, setTxStream] = useState([]); // [{round, tx_hash, kind, detail, latency_us, ts}]
+  const [round, setRound] = useState(0);
 
   if (!engineRef.current) engineRef.current = new SwarmEngine().init(15);
-  var engine = engineRef.current;
+  const engine = engineRef.current;
 
-  var startSim = function() { if (intervalRef.current) return; engine.paused = false; setIsRunning(true); intervalRef.current = setInterval(function(){ engine.update(); forceUpdate(); }, 50); };
-  var stopSim = function() { engine.paused = true; setIsRunning(false); if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
-  var resetSim = function() { stopSim(); engineRef.current = new SwarmEngine().init(15); forceUpdate(); };
-  var triggerFailure = function() { var alive = engine.agents.filter(function(a){return a.status!=="offline"}); if (alive.length > 3) engine.triggerAgentFailure(pick(alive), "manual_kill"); forceUpdate(); };
-  var triggerSafety = function() { engine.triggerSafetyAlert(rand(100, MAP_W - 100), rand(100, MAP_H - 100)); forceUpdate(); };
-  var addAgent = function() { var typeKey = pick(Object.keys(AGENT_TYPES)); var t = AGENT_TYPES[typeKey]; engine.agents.push({ id: uid(), type: typeKey, vendor: pick(VENDORS), x: rand(40, MAP_W - 40), y: rand(40, MAP_H - 40), targetX: null, targetY: null, battery: rand(70, 100), capacity: t.capacity, load: 0, speed: t.speed * rand(0.85, 1.15), range: t.range, status: "idle", orderId: null, discoveredPeers: [], safetyMode: false }); engine.log("SYSTEM", "New " + typeKey + " joined from " + engine.agents[engine.agents.length - 1].vendor); forceUpdate(); };
+  const onFrame = (frame) => {
+    if (frame.type === "Consensus") {
+      setRound(frame.round);
+      const rows = [];
+      for (const tx of frame.transactions) {
+        const kind = tx.payload && tx.payload.type ? tx.payload.type : "Unknown";
+        const detail = describeTx(tx.payload);
+        rows.push({
+          round: frame.round, tx_hash: tx.tx_hash, kind, detail,
+          latency_us: frame.latency_us, ts: Date.now(),
+        });
+      }
+      if (rows.length) {
+        setTxStream(cur => [...rows.reverse(), ...cur].slice(0, 120));
+        engine.log("VERTEX", `Round ${frame.round} · ${rows.length} tx · ${fmtUs(frame.latency_us)}`, "vertex");
+      }
+    } else if (frame.type === "SyncPoint") {
+      engine.log("VERTEX", `◈ SYNC POINT @ round ${frame.round}`, "vertex");
+    }
+  };
+  const bridge = useVertexBridge(onFrame);
 
-  useEffect(function(){ return function(){ if (intervalRef.current) clearInterval(intervalRef.current); }; }, []);
+  const startSim = () => {
+    if (intervalRef.current) return;
+    engine.paused = false; setIsRunning(true);
+    intervalRef.current = setInterval(() => { engine.update(); forceUpdate(); }, 50);
+  };
+  const stopSim = () => {
+    engine.paused = true; setIsRunning(false);
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+  };
+  const resetSim = () => { stopSim(); engineRef.current = new SwarmEngine().init(15); setTxStream([]); setRound(0); forceUpdate(); };
+  const triggerFailure = () => {
+    const alive = engine.agents.filter(a => a.status !== "offline");
+    if (alive.length > 3) engine.triggerAgentFailure(pick(alive), "manual_kill");
+    forceUpdate();
+  };
+  const triggerSafety = () => { engine.triggerSafetyAlert(rand(100, MAP_W - 100), rand(100, MAP_H - 100)); forceUpdate(); };
+  const addAgent = () => {
+    const typeKey = pick(Object.keys(AGENT_TYPES)); const t = AGENT_TYPES[typeKey];
+    engine.agents.push({
+      id: uid(), type: typeKey, vendor: pick(VENDORS),
+      x: rand(40, MAP_W - 40), y: rand(40, MAP_H - 40),
+      targetX: null, targetY: null,
+      battery: rand(70, 100), capacity: t.capacity, load: 0,
+      speed: t.speed * rand(0.85, 1.15), range: t.range,
+      status: "idle", orderId: null, discoveredPeers: [], safetyMode: false,
+    });
+    engine.log("SYSTEM", `New ${typeKey} joined · ${engine.agents[engine.agents.length - 1].vendor}`);
+    forceUpdate();
+  };
 
-  var alive = engine.agents.filter(function(a){return a.status!=="offline"});
-  var logC = { info: "#444", order: O, auction: "#FF9D45", deliver: "#aaa", success: O, handoff: "#FF9D45", error: "#ff3333", heal: "#666", safety: O };
-  var stC = { idle: "#444", delivering: O, offline: "#ff3333" };
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
-  var s = function(obj){ return obj; }; // style passthrough
+  const alive = engine.agents.filter(a => a.status !== "offline");
+  const logColor = {
+    info: "var(--text-3)", order: "var(--orange)", auction: "var(--orange-2)",
+    deliver: "var(--text-2)", success: "var(--orange)", handoff: "var(--orange-2)",
+    error: "var(--red)", heal: "var(--text-3)", safety: "var(--orange)",
+    vertex: "#3ED598",
+  };
+  const statusColor = { idle: "var(--text-3)", delivering: "var(--orange)", offline: "var(--red)" };
 
-  return h("div", { style: s({ fontFamily: MONO, background: "#0D0D0D", color: "#fff", minHeight: "100vh", padding: "24px 28px" }) },
+  // ─── primary button ────────────────────────────────────────────────────
+  const primaryBtn = (label, onClick, filled) => h("button", {
+    onClick,
+    style: {
+      padding: "10px 22px", fontSize: 11, fontWeight: 700, fontFamily: "var(--mono)",
+      letterSpacing: "0.12em", cursor: "pointer", borderRadius: 6,
+      border: `1.5px solid var(--orange)`,
+      background: filled ? "var(--orange)" : "transparent",
+      color: filled ? "#000" : "var(--orange)",
+    },
+  }, label);
+
+  const ghostBtn = (label, onClick) => h("button", {
+    onClick,
+    style: {
+      padding: "8px 16px", fontSize: 10, fontWeight: 600, fontFamily: "var(--mono)",
+      letterSpacing: "0.12em", cursor: "pointer", borderRadius: 6,
+      border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)",
+    },
+  }, label);
+
+  // ─── layout ────────────────────────────────────────────────────────────
+  return h("div", { style: { maxWidth: 1440, margin: "0 auto" } },
 
     // HEADER
-    h("div", { style: s({ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }) },
-      h("div", null,
-        h("div", { style: s({ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }) },
-          h("div", { style: s({ width: 36, height: 36, border: "2px solid " + O, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: O, fontWeight: 700 }) }, "◈"),
-          h("h1", { style: s({ fontSize: 28, fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1 }) }, "SWARM", h("span", { style: { color: O } }, "LOGIX"))
-        ),
-        h("p", { style: s({ fontSize: 9, color: "rgba(255,255,255,0.25)", letterSpacing: "0.16em", textTransform: "uppercase" }) }, "P2P Last-Mile Coordination · London Metro · Built on Vertex 2.0 by Tashi")
+    h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 16 } },
+      h("div", { style: { display: "flex", alignItems: "center", gap: 16 } },
+        h("div", { style: {
+          width: 40, height: 40, borderRadius: 8,
+          border: "2px solid var(--orange)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 20, color: "var(--orange)", fontWeight: 700,
+        } }, "◈"),
+        h("div", null,
+          h("div", { style: { fontSize: 24, fontWeight: 700, letterSpacing: "-0.01em", lineHeight: 1.1 } },
+            "Swarm", h("span", { style: { color: "var(--orange)" } }, "Logix")),
+          h("div", { style: { fontSize: 10, color: "var(--text-3)", fontFamily: "var(--mono)", letterSpacing: "0.18em", marginTop: 4, textTransform: "uppercase" } },
+            "P2P Delivery · Built on Tashi Vertex · Swarm Challenge 2026")
+        )
       ),
-      h("div", { style: s({ display: "flex", gap: 8 }) },
-        !isRunning
-          ? h("button", { onClick: startSim, style: s({ padding: "10px 24px", fontSize: 11, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.12em", border: "2px solid " + O, background: O, color: "#000", cursor: "pointer" }) }, "▶ JOIN THE SWARM")
-          : h("button", { onClick: stopSim, style: s({ padding: "10px 24px", fontSize: 11, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.12em", border: "2px solid " + O, background: "transparent", color: O, cursor: "pointer" }) }, "⏸ PAUSE"),
-        h("button", { onClick: resetSim, style: s({ padding: "10px 20px", fontSize: 11, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.12em", border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "rgba(255,255,255,0.35)", cursor: "pointer" }) }, "↺ RESET")
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+        h(LiveBadge, { status: bridge.status, info: bridge.info, round }),
+        !isRunning ? primaryBtn("▶ JOIN THE SWARM", startSim, true) : primaryBtn("⏸ PAUSE", stopSim, false),
+        ghostBtn("↺ RESET", resetSim)
       )
     ),
 
     // STATS
-    h("div", { style: s({ display: "flex", gap: 1, marginBottom: 20 }) },
-      [{ label: "ACTIVE NODES", value: alive.length, hl: true }, { label: "DELIVERIES", value: engine.stats.delivered }, { label: "AUCTIONS", value: engine.stats.auctionsRun }, { label: "HANDOFFS", value: engine.stats.handoffsCompleted }, { label: "SELF-HEALS", value: engine.stats.heals }, { label: "SAFETY ALERTS", value: engine.stats.alerts }].map(function(st, i) {
-        return h("div", { key: st.label, style: s({ flex: 1, padding: "14px 16px", background: st.hl ? "rgba(255,107,0,0.06)" : "rgba(255,255,255,0.015)", borderLeft: i === 0 ? "2px solid " + O : "none", borderTop: "1px solid " + (st.hl ? "rgba(255,107,0,0.15)" : "rgba(255,255,255,0.03)"), borderBottom: "1px solid " + (st.hl ? "rgba(255,107,0,0.15)" : "rgba(255,255,255,0.03)") }) },
-          h("div", { style: s({ fontSize: 7, color: st.hl ? O : "rgba(255,255,255,0.2)", letterSpacing: "0.2em", marginBottom: 6 }) }, st.label),
-          h("div", { style: s({ fontSize: 26, fontWeight: 700, color: st.hl ? O : "#fff" }) }, st.value)
-        );
-      })
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 20 } },
+      h(StatCard, { label: "ACTIVE NODES",  value: alive.length, hl: true }),
+      h(StatCard, { label: "DELIVERIES",    value: engine.stats.delivered }),
+      h(StatCard, { label: "AUCTIONS",      value: engine.stats.auctionsRun }),
+      h(StatCard, { label: "HANDOFFS",      value: engine.stats.handoffsCompleted }),
+      h(StatCard, { label: "SELF-HEALS",    value: engine.stats.heals }),
+      h(StatCard, { label: bridge.status === "live" ? "CONSENSUS ROUND" : "SAFETY ALERTS",
+                    value: bridge.status === "live" ? round : engine.stats.alerts,
+                    accent: bridge.status === "live" ? "#3ED598" : undefined })
     ),
 
     // CONTROLS
-    h("div", { style: s({ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }) },
-      h("button", { onClick: addAgent, style: s({ padding: "7px 16px", fontSize: 9, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.1em", border: "1px solid " + O, background: "transparent", color: O, cursor: "pointer" }) }, "+ NODE"),
-      h("button", { onClick: triggerFailure, style: s({ padding: "7px 16px", fontSize: 9, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.1em", border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "rgba(255,255,255,0.3)", cursor: "pointer" }) }, "⚡ KILL"),
-      h("button", { onClick: triggerSafety, style: s({ padding: "7px 16px", fontSize: 9, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.1em", border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "rgba(255,255,255,0.3)", cursor: "pointer" }) }, "◈ SAFETY"),
+    h("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" } },
+      ghostBtn("+ NODE", addAgent),
+      ghostBtn("⚡ KILL", triggerFailure),
+      ghostBtn("◈ SAFETY", triggerSafety),
       h("div", { style: { flex: 1 } }),
-      h("div", { style: { display: "flex" } },
-        ["map", "agents", "auctions"].map(function(t) {
-          return h("button", { key: t, onClick: function(){ setTab(t); }, style: s({ padding: "7px 18px", fontSize: 8, fontWeight: 700, fontFamily: MONO, letterSpacing: "0.14em", textTransform: "uppercase", border: "1px solid rgba(255,255,255,0.05)", background: tab === t ? "rgba(255,107,0,0.08)" : "transparent", color: tab === t ? O : "rgba(255,255,255,0.2)", cursor: "pointer", borderBottom: tab === t ? "2px solid " + O : "2px solid transparent" }) }, t);
-        })
+      h("div", { style: { display: "inline-flex", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: 2 } },
+        ["map", "agents", "consensus", "auctions"].map(t =>
+          h("button", {
+            key: t, onClick: () => setTab(t),
+            style: {
+              padding: "7px 16px", fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+              letterSpacing: "0.14em", cursor: "pointer", borderRadius: 4, border: "none",
+              background: tab === t ? "rgba(255,107,0,0.12)" : "transparent",
+              color: tab === t ? "var(--orange)" : "var(--text-3)",
+              textTransform: "uppercase",
+            },
+          }, t)
+        )
       )
     ),
 
-    // MAIN
-    h("div", { style: s({ display: "flex", gap: 1 }) },
-      h("div", { style: s({ flex: 1, minWidth: 0 }) },
-        tab === "map" && h(SwarmMap, { engine: engine }),
-        tab === "agents" && h("div", { style: s({ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,107,0,0.08)", maxHeight: MAP_H, overflow: "auto" }) },
-          h("table", { style: s({ width: "100%", borderCollapse: "collapse", fontSize: 10 }) },
-            h("thead", null, h("tr", null, ["ID","TYPE","VENDOR","STATUS","BATTERY","LOAD","PEERS"].map(function(hd){ return h("th", { key: hd, style: s({ padding: "10px 12px", textAlign: "left", color: O, fontWeight: 700, fontSize: 7, letterSpacing: "0.18em", borderBottom: "1px solid rgba(255,107,0,0.12)", position: "sticky", top: 0, background: "#0D0D0D" }) }, hd); }))),
-            h("tbody", null, engine.agents.map(function(a){
-              return h("tr", { key: a.id, style: { borderBottom: "1px solid rgba(255,255,255,0.02)" } },
-                h("td", { style: { padding: "7px 12px", color: "rgba(255,255,255,0.3)" } }, a.id),
-                h("td", { style: { padding: "7px 12px" } }, h("span", { style: { color: AGENT_TYPES[a.type].color, fontWeight: 700, fontSize: 9 } }, AGENT_TYPES[a.type].label)),
-                h("td", { style: { padding: "7px 12px", color: "rgba(255,255,255,0.45)" } }, a.vendor),
-                h("td", { style: { padding: "7px 12px" } }, h("span", { style: { padding: "2px 8px", fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", border: "1px solid " + ((stC[a.status]||"#444") + "40"), color: a.safetyMode ? O : (stC[a.status]||"#444") } }, a.safetyMode ? "◈ FROZEN" : a.status.toUpperCase())),
-                h("td", { style: { padding: "7px 12px" } }, h("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, h("div", { style: { width: 36, height: 3, background: "rgba(255,255,255,0.05)" } }, h("div", { style: { width: a.battery + "%", height: "100%", background: a.battery > 30 ? O : "#ff3333" } })), h("span", { style: { fontSize: 8, color: "rgba(255,255,255,0.25)" } }, a.battery.toFixed(0) + "%"))),
-                h("td", { style: { padding: "7px 12px", color: "rgba(255,255,255,0.25)", fontSize: 9 } }, a.load.toFixed(1) + "/" + a.capacity + "kg"),
-                h("td", { style: { padding: "7px 12px", color: "rgba(255,255,255,0.25)", fontSize: 9 } }, a.discoveredPeers.length)
-              );
-            }))
+    // MAIN GRID
+    h("div", { style: { display: "grid", gridTemplateColumns: "1fr 360px", gap: 12 } },
+
+      // LEFT — tabbed main view
+      h("div", { style: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 12, minWidth: 0 } },
+        tab === "map" && h(SwarmMap, { engine }),
+
+        tab === "agents" && h("div", { style: { maxHeight: MAP_H, overflow: "auto" } },
+          h("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } },
+            h("thead", null, h("tr", null,
+              ["ID","TYPE","VENDOR","STATUS","BATTERY","LOAD","PEERS"].map(hd =>
+                h("th", { key: hd, style: {
+                  padding: "12px 14px", textAlign: "left",
+                  color: "var(--orange)", fontWeight: 700, fontSize: 10, fontFamily: "var(--mono)",
+                  letterSpacing: "0.18em", borderBottom: "1px solid var(--border-hi)",
+                  position: "sticky", top: 0, background: "var(--panel)",
+                } }, hd)
+              )
+            )),
+            h("tbody", null, engine.agents.map(a =>
+              h("tr", { key: a.id, style: { borderBottom: "1px solid var(--border)" } },
+                h("td", { style: { padding: "10px 14px", color: "var(--text-3)", fontFamily: "var(--mono)", fontSize: 11 } }, a.id),
+                h("td", { style: { padding: "10px 14px" } }, h("span", { style: { color: AGENT_TYPES[a.type].color, fontWeight: 700, fontSize: 11, fontFamily: "var(--mono)" } }, AGENT_TYPES[a.type].label)),
+                h("td", { style: { padding: "10px 14px", color: "var(--text-2)", fontSize: 11 } }, a.vendor),
+                h("td", { style: { padding: "10px 14px" } },
+                  h(Pill, { color: a.safetyMode ? "#FF6B00" : (statusColor[a.status] === "var(--orange)" ? "#FF6B00" : statusColor[a.status] === "var(--red)" ? "#FF4D4D" : "#999") },
+                    a.safetyMode ? "◈ FROZEN" : a.status.toUpperCase())
+                ),
+                h("td", { style: { padding: "10px 14px" } },
+                  h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    h("div", { style: { width: 44, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" } },
+                      h("div", { style: { width: a.battery + "%", height: "100%", background: a.battery > 30 ? "var(--orange)" : "var(--red)" } })),
+                    h("span", { style: { fontSize: 10, color: "var(--text-3)", fontFamily: "var(--mono)" } }, a.battery.toFixed(0) + "%"))),
+                h("td", { style: { padding: "10px 14px", color: "var(--text-3)", fontSize: 11, fontFamily: "var(--mono)" } }, a.load.toFixed(1) + " / " + a.capacity),
+                h("td", { style: { padding: "10px 14px", color: "var(--text-3)", fontSize: 11, fontFamily: "var(--mono)" } }, a.discoveredPeers.length)
+              )
+            ))
           )
         ),
-        tab === "auctions" && h("div", { style: s({ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,107,0,0.08)", padding: 16, maxHeight: MAP_H, overflow: "auto" }) },
+
+        tab === "consensus" && h("div", { style: { maxHeight: MAP_H, overflow: "auto", padding: 4 } },
+          h(SectionTitle, null, `VERTEX CONSENSUS STREAM · ${bridge.status === "live" ? "LIVE" : "OFFLINE"}`),
+          bridge.status !== "live" && h("div", { style: { padding: 28, border: "1px dashed var(--border)", borderRadius: 8, color: "var(--text-3)", fontSize: 13, lineHeight: 1.7 } },
+            "Bridge not connected. Start the swarm with ",
+            h("code", { style: { fontFamily: "var(--mono)", color: "var(--orange)" } }, "cd vertex && ./run_swarm.sh"),
+            " and this panel will stream every consensus-ordered transaction from the real Vertex mesh."
+          ),
+          bridge.status === "live" && txStream.length === 0 && h("div", { style: { padding: 28, color: "var(--text-3)", fontSize: 13 } }, "Connected — waiting for the first consensus round…"),
+          txStream.map((t, i) => h("div", {
+            key: `${t.round}-${t.tx_hash}-${i}`,
+            style: {
+              display: "grid", gridTemplateColumns: "64px 140px 110px 1fr 90px",
+              gap: 12, padding: "10px 4px", borderBottom: "1px solid var(--border)",
+              fontSize: 11, fontFamily: "var(--mono)",
+              animation: i === 0 ? "fadeIn 0.25s ease-out" : undefined,
+            },
+          },
+            h("span", { style: { color: "var(--text-4)" } }, "#" + t.round),
+            h("span", { style: { color: "#3ED598" } }, t.tx_hash),
+            h("span", { style: { color: "var(--orange)", fontWeight: 700 } }, t.kind),
+            h("span", { style: { color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, t.detail),
+            h("span", { style: { color: "var(--text-3)", textAlign: "right" } }, fmtUs(t.latency_us))
+          ))
+        ),
+
+        tab === "auctions" && h("div", { style: { maxHeight: MAP_H, overflow: "auto", padding: 4 } },
           engine.auctions.length === 0
-            ? h("div", { style: { color: "rgba(255,255,255,0.12)", textAlign: "center", padding: 40, fontSize: 9, letterSpacing: "0.12em" } }, "NO AUCTIONS YET. START THE SWARM.")
-            : engine.auctions.slice(0, 15).map(function(auc) {
-                return h("div", { key: auc.id, style: s({ marginBottom: 10, padding: 12, background: "rgba(255,107,0,0.02)", borderLeft: "2px solid " + O }) },
-                  h("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 8 } },
-                    h("span", { style: { fontSize: 9, fontWeight: 700, color: O, letterSpacing: "0.08em" } }, "AUCTION #" + auc.id.slice(0,4) + " · ORDER " + auc.orderId.slice(0,4)),
-                    h("span", { style: { fontSize: 8, color: "rgba(255,255,255,0.12)" } }, "TICK " + auc.tick)
+            ? h("div", { style: { color: "var(--text-4)", textAlign: "center", padding: 60, fontSize: 12, fontFamily: "var(--mono)", letterSpacing: "0.12em" } }, "NO AUCTIONS YET · START THE SWARM")
+            : engine.auctions.slice(0, 20).map(auc =>
+                h("div", { key: auc.id, style: { marginBottom: 10, padding: 14, background: "rgba(255,107,0,0.03)", borderLeft: "2px solid var(--orange)", borderRadius: 4 } },
+                  h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+                    h("span", { style: { fontSize: 11, fontFamily: "var(--mono)", fontWeight: 700, color: "var(--orange)", letterSpacing: "0.08em" } },
+                      "AUCTION #" + auc.id.slice(0,4) + " · ORDER " + auc.orderId.slice(0,4)),
+                    h("span", { style: { fontSize: 10, color: "var(--text-4)", fontFamily: "var(--mono)" } }, "TICK " + auc.tick)
                   ),
-                  h("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, auc.bids.map(function(bid){
-                    return h("div", { key: bid.agentId, style: { padding: "3px 10px", fontSize: 9, border: bid.agentId === auc.winnerId ? "1px solid " + O : "1px solid rgba(255,255,255,0.04)", color: bid.agentId === auc.winnerId ? O : "rgba(255,255,255,0.25)", background: bid.agentId === auc.winnerId ? "rgba(255,107,0,0.06)" : "transparent" } }, bid.vendor + " · " + bid.score + (bid.agentId === auc.winnerId ? " ✓" : ""));
-                  }))
-                );
-              })
+                  h("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, auc.bids.map(bid =>
+                    h("div", { key: bid.agentId, style: {
+                      padding: "4px 12px", fontSize: 11, borderRadius: 4,
+                      border: bid.agentId === auc.winnerId ? "1px solid var(--orange)" : "1px solid var(--border)",
+                      color: bid.agentId === auc.winnerId ? "var(--orange)" : "var(--text-3)",
+                      background: bid.agentId === auc.winnerId ? "rgba(255,107,0,0.08)" : "transparent",
+                      fontFamily: "var(--mono)",
+                    } }, bid.vendor + " · " + bid.score + (bid.agentId === auc.winnerId ? " ✓" : ""))
+                  ))
+                )
+              )
         )
       ),
 
-      // EVENT LOG
-      h("div", { style: s({ width: 340, marginLeft: 1, background: "rgba(255,255,255,0.01)", borderLeft: "2px solid " + O, padding: 14, maxHeight: MAP_H + 4, overflow: "auto", flexShrink: 0 }) },
-        h("div", { style: s({ fontSize: 7, fontWeight: 700, letterSpacing: "0.2em", color: O, marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid rgba(255,107,0,0.12)" }) }, "MESH EVENT LOG"),
-        engine.eventLog.map(function(entry, i) {
-          return h("div", { key: entry.tick + "-" + i, style: s({ display: "flex", gap: 8, fontSize: 9, padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.015)", animation: i === 0 ? "fadeIn 0.3s ease-out" : undefined }) },
-            h("span", { style: { color: "rgba(255,255,255,0.1)", minWidth: 30 } }, entry.tick),
-            h("span", { style: { color: logC[entry.type] || "#444", minWidth: 52, fontWeight: 700 } }, "[" + entry.source + "]"),
-            h("span", { style: { color: "rgba(255,255,255,0.45)" } }, entry.message)
-          );
-        }),
-        engine.eventLog.length === 0 && h("div", { style: { color: "rgba(255,255,255,0.08)", fontSize: 9, textAlign: "center", padding: 30, letterSpacing: "0.1em" } }, "PRESS START TO INITIALIZE")
+      // RIGHT — event log
+      h("div", { style: { background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, maxHeight: MAP_H + 32, overflow: "auto" } },
+        h(SectionTitle, null, "MESH EVENT LOG"),
+        engine.eventLog.length === 0 && h("div", { style: { color: "var(--text-4)", fontSize: 11, textAlign: "center", padding: 40, fontFamily: "var(--mono)", letterSpacing: "0.12em" } }, "PRESS JOIN TO INITIALISE"),
+        engine.eventLog.map((e, i) =>
+          h("div", {
+            key: e.tick + "-" + i,
+            style: {
+              display: "grid", gridTemplateColumns: "36px 62px 1fr", gap: 8,
+              fontSize: 11, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.02)",
+              fontFamily: "var(--mono)",
+              animation: i === 0 ? "fadeIn 0.25s ease-out" : undefined,
+            }
+          },
+            h("span", { style: { color: "var(--text-4)" } }, e.tick),
+            h("span", { style: { color: logColor[e.type] || "var(--text-3)", fontWeight: 700, letterSpacing: "0.04em" } }, e.src),
+            h("span", { style: { color: "var(--text-2)" } }, e.msg)
+          )
+        )
       )
     ),
 
     // PROTOCOL CARDS
-    h("div", { style: s({ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 1, marginTop: 20 }) },
-      [{ n:"01", t:"P2P DISCOVERY", d:"Agents broadcast state via Vertex mesh. Peers within range auto-connect. No central registry." }, { n:"02", t:"AUCTION PROTOCOL", d:"Orders trigger local P2P auctions. Agents bid on proximity, battery, capacity. Winner in ms." }, { n:"03", t:"MULTI-HOP HANDOFF", d:"Long-distance orders relayed: Drone to Robot for indoor. Negotiated peer-to-peer." }, { n:"04", t:"SELF-HEALING", d:"Agent drops? Order re-auctioned instantly. No single point of failure. No manual intervention." }, { n:"05", t:"SAFETY MESH", d:"One node detects hazard. Alert propagates. All agents in zone freeze in milliseconds." }].map(function(p){
-        return h("div", { key: p.n, style: s({ padding: "18px 16px", background: "rgba(255,107,0,0.02)", borderTop: "2px solid " + O }) },
-          h("div", { style: { fontSize: 26, fontWeight: 700, color: "rgba(255,107,0,0.08)", lineHeight: 1, marginBottom: 8 } }, p.n),
-          h("div", { style: { fontSize: 9, fontWeight: 700, color: O, letterSpacing: "0.1em", marginBottom: 6 } }, p.t),
-          h("div", { style: { fontSize: 9, lineHeight: 1.6, color: "rgba(255,255,255,0.25)" } }, p.d)
-        );
-      })
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginTop: 24 } },
+      [
+        { n: "01", t: "P2P Discovery",      d: "Agents broadcast state via the Vertex mesh. Peers within range auto-discover. No registry." },
+        { n: "02", t: "Auction Protocol",   d: "Orders trigger local P2P auctions. Agents bid on proximity, battery, capacity. Winner in ms." },
+        { n: "03", t: "Multi-Hop Handoff",  d: "Long-distance orders relayed: drone → robot for indoor. Negotiated peer-to-peer." },
+        { n: "04", t: "Self-Healing",       d: "Agent drops? Order re-auctioned instantly. No single point of failure." },
+        { n: "05", t: "Safety Mesh",        d: "One node detects a hazard. Alert propagates. All nearby agents freeze in milliseconds." },
+      ].map(p => h("div", {
+        key: p.n,
+        style: { padding: "16px 14px", background: "var(--panel)", borderTop: "2px solid var(--orange)", borderRadius: "0 0 8px 8px" },
+      },
+        h("div", { style: { fontSize: 24, fontWeight: 700, color: "rgba(255,107,0,0.14)", fontFamily: "var(--mono)", lineHeight: 1, marginBottom: 8 } }, p.n),
+        h("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--orange)", letterSpacing: "0.1em", marginBottom: 8, fontFamily: "var(--mono)" } }, p.t.toUpperCase()),
+        h("div", { style: { fontSize: 11, lineHeight: 1.6, color: "var(--text-3)" } }, p.d)
+      ))
     ),
 
     // FOOTER
-    h("div", { style: s({ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,107,0,0.08)", display: "flex", justifyContent: "space-between" }) },
-      h("span", { style: { fontSize: 8, color: "rgba(255,255,255,0.12)", letterSpacing: "0.14em" } }, "SWARMLOGIX · VERTEX SWARM CHALLENGE 2026 · BUILT ON TASHI NETWORK"),
-      h("span", { style: { fontSize: 8, color: O, letterSpacing: "0.14em", fontWeight: 700 } }, "COLLECTIVE INTELLIGENCE FOR AUTONOMOUS SYSTEMS")
+    h("div", { style: { marginTop: 28, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      h("span", { style: { fontSize: 10, color: "var(--text-4)", letterSpacing: "0.14em", fontFamily: "var(--mono)" } }, "SWARMLOGIX · VERTEX SWARM CHALLENGE 2026"),
+      h("span", { style: { fontSize: 10, color: "var(--orange)", letterSpacing: "0.14em", fontWeight: 700, fontFamily: "var(--mono)" } }, "COLLECTIVE INTELLIGENCE · BUILT ON TASHI")
     )
   );
+}
+
+function describeTx(p) {
+  if (!p || typeof p !== "object") return "";
+  switch (p.type) {
+    case "AgentState":     return `${p.agent_id} · ${p.vendor}/${p.agent_type} · bat ${Math.round(p.battery)}%`;
+    case "OrderCreated":   return `order ${String(p.order_id).slice(0,6)} · ${Number(p.weight).toFixed(1)}kg`;
+    case "AuctionBid":     return `${p.agent_id} bids ${Number(p.score).toFixed(3)} on ${String(p.order_id).slice(0,6)}`;
+    case "AuctionWinner":  return `${p.winner_id} wins ${String(p.order_id).slice(0,6)}`;
+    case "HandoffRequest": return `${p.from_agent} → ${p.to_agent} @ ${String(p.order_id).slice(0,6)}`;
+    case "HandoffComplete":return `${p.from_agent} → ${p.to_agent} done`;
+    case "OrderDelivered": return `${String(p.order_id).slice(0,6)} by ${p.agent_id}`;
+    case "AgentFailure":   return `${p.agent_id} down · ${p.reason}`;
+    case "AgentRecovery":  return `${p.agent_id} back @ ${Math.round(p.battery)}%`;
+    case "SafetyAlert":    return `alert ${String(p.alert_id).slice(0,6)} · ${Math.round(p.radius)}m`;
+    case "SafetyClear":    return `clear ${String(p.alert_id).slice(0,6)}`;
+    default:               return p.type || "unknown";
+  }
 }
 
 ReactDOM.render(h(App), document.getElementById("root"));

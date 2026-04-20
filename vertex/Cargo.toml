@@ -5,11 +5,14 @@ edition = "2021"
 description = "SwarmLogix P2P Delivery Coordination built on Tashi Vertex Consensus"
 
 [dependencies]
-tashi-vertex = "0.12"
+tashi-vertex = { git = "https://github.com/tashigit/tashi-vertex-rs.git" }
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
+anyhow = "1"
 
 [[example]]
 name = "key-generate"
@@ -22,3 +25,11 @@ path = "examples/swarm_node.rs"
 [[example]]
 name = "vertex-monitor"
 path = "examples/vertex_monitor.rs"
+
+[[example]]
+name = "handshake"
+path = "examples/handshake.rs"
+
+[[example]]
+name = "vertex-bridge"
+path = "examples/vertex_bridge.rs"

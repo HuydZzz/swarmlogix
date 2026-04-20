@@ -2,6 +2,28 @@
 
 All notable changes to SwarmLogix are documented here.
 
+## [0.4.0] - 2026-04-20
+
+### Added
+- `vertex/examples/vertex_bridge.rs` — an observer Vertex node that hosts a WebSocket server on `ws://127.0.0.1:8787` and streams every consensus-ordered transaction (round, tx_hash, payload, latency) to connected browsers.
+- Dashboard now auto-connects to the bridge on load. A header badge flips between `◯ SIMULATION` and `● LIVE VERTEX`, and a new **Consensus** tab shows the live transaction stream.
+- `tokio-tungstenite` + `futures-util` dependencies to power the bridge.
+
+### Changed
+- `index.html` redesigned: Inter + JetBrains Mono typography, larger readable type, grid-based layout, consensus-round stat card, improved agent table with pills, protocol cards refreshed, better colour accessibility on dark background.
+- `run_swarm.sh` now generates **4** keypairs and launches the bridge alongside the 3 delivery nodes so the dashboard goes live out of the box.
+
+## [0.3.1] - 2026-04-20
+
+### Fixed
+- `vertex/Cargo.toml` now pulls `tashi-vertex` from the official git repo (`github.com/tashigit/tashi-vertex-rs`) instead of a non-existent `"0.12"` crate — `cargo build` now resolves.
+- Corrected `engine.recv_message()` loop to handle `Result<Option<Message>>` (was `Result<Message>`), and matched `Message::SyncPoint(_)` as a payload-carrying variant. Affects `swarm_node.rs`, `vertex_monitor.rs`, and `src/main.rs`.
+- `src/main.rs` no longer calls `.clone()` on `KeySecret` (which does not impl `Clone`) — the secret is now round-tripped via its base58 `Display` / `FromStr` encoding.
+
+### Added
+- `vertex/examples/handshake.rs` — the Warmup Track Stateful Handshake demo (greeting, 2s heartbeat, role change, 10s stale detection, auto-recovery).
+- `anyhow` dependency for ergonomic errors in the new example.
+
 ## [0.3.0] - 2026-04-15
 
 ### Added

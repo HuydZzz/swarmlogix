@@ -75,15 +75,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut handles = Vec::new();
 
     for agent in &agents {
-        let bind_addr = format!("127.0.0.1:{}", agent.port);
+        let port = agent.port;
+        let bind_addr = format!("127.0.0.1:{}", port);
         let agent_id = agent.id.clone();
         let agent_type = agent.agent_type.clone();
         let vendor = agent.vendor.clone();
-        let secret = agent.secret.clone();
+        // KeySecret is not Clone — roundtrip via base58 Display/FromStr
+        let secret_str = agent.secret.to_string();
         let pub_keys = pub_keys.clone();
         let state = Arc::clone(&state);
 
         let handle = tokio::spawn(async move {
+            // Reconstruct the secret key from its base58 string (KeySecret is not Clone)
+            let secret: KeySecret = secret_str.parse().unwrap();
+
             // Setup peers
             let context = Context::new().unwrap();
             let mut peers = Peers::new().unwrap();
@@ -106,7 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 agent_id: agent_id.clone(),
                 agent_type: agent_type.clone(),
                 vendor: vendor.clone(),
-                x: 100.0 + (agent.port as f64 - BASE_PORT as f64) * 200.0,
+                x: 100.0 + (port as f64 - BASE_PORT as f64) * 200.0,
                 y: 200.0,
                 battery: 90.0,
                 capacity: match agent_type.as_str() {
@@ -122,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             engine.send_transaction(tx).unwrap();
 
             // Send a test order from the first node
-            if agent.port == BASE_PORT {
+            if port == BASE_PORT {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
                 let order_msg = SwarmMessage::OrderCreated {
@@ -153,7 +158,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Submit bids from other nodes
-            if agent.port == BASE_PORT + 1 {
+            if port == BASE_PORT + 1 {
                 tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                 let bid_msg = SwarmMessage::AuctionBid {
                     order_id: "ord-0001".into(),
@@ -168,9 +173,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Receive consensus-ordered messages
-            loop {
-                match engine.recv_message().await {
-                    Ok(Message::Event(event)) => {
+            while let Ok(Some(msg)) = engine.recv_message().await {
+                match msg {
+                    Message::Event(event) => {
                         let tx_count = event.transaction_count();
                         for i in 0..tx_count {
                             if let Some(tx_data) = event.transaction(i) {
@@ -178,20 +183,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let mut s = state.lock().await;
                                     s.apply(&msg);
                                     // Only first node prints to avoid duplicates
-                                    if agent.port == BASE_PORT {
+                                    if port == BASE_PORT {
                                         print_consensus_event(&msg, &s);
                                     }
                                 }
                             }
                         }
                     }
-                    Ok(Message::SyncPoint) => {
-                        if agent.port == BASE_PORT {
+                    Message::SyncPoint(_) => {
+                        if port == BASE_PORT {
                             println!("  ◈ SYNC POINT — consensus reached");
                         }
                     }
-                    Ok(_) => {}
-                    Err(_) => break,
                 }
             }
         });
